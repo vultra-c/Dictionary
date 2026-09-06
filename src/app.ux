@@ -1,0 +1,18 @@
+<script>
+// Vela 全局数据容器：app.ux 导出对象上的属性会成为 $app.$def.*，
+// 页面通过 this.$app.$def.dictWord 等跨页读写（不要在 app 里用 this.$data）。
+import { loadSettings, applyKeepScreenOn } from './common/logic/settings.js'
+
+export default {
+  // 搜索页/生词本 → 详情页：待查单词（纯小写英文）
+  dictWord: '',
+
+  // 常亮显示的「记忆」：setKeepScreenOn 退出应用即由系统复位，
+  // 因此每次启动都按持久化设置重新打开一次。
+  onCreate() {
+    loadSettings((s) => {
+      if (s.keepScreenOn) applyKeepScreenOn(true)
+    })
+  }
+}
+</script>

@@ -1,0 +1,78 @@
+name: Build Vela RPK
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    # npm install 的 postinstall 会自动执行 scripts/patch-aiotpack.js
+    # （rspack 原生绑定在部分环境 SIGBUS，补丁回退到 webpack5 + terser）
+    - name: Install dependencies
+      run: npm install
+
+    - name: Smoke test
+      run: node tests/smoke.mjs
+
+    - name: Build release RPK
+      run: npm run release
+
+    # 安装时「没有包名」的防护闸门：
+    # 校验包内 manifest 可解析出包名、且包含 RPK Sig Block 42 签名块
+    - name: Verify RPK (package name + signature)
+      run: node scripts/verify-rpk.mjs dist/*.rpk
+
+    - name: Check RPK size budget (≤ 7MB)
+      run: |
+        set -euo pipefail
+        RPK=$(ls dist/*.rpk | head -n1)
+        SIZE=$(stat -c%s "$RPK")
+        MAX=$((7 * 1024 * 1024))
+        echo "RPK 大小: $SIZE bytes ($(echo "scale=2; $SIZE/1048576" | bc) MB) / 上限 $(echo "scale=0; $MAX/1048576" | bc) MB"
+        if [ "$SIZE" -gt "$MAX" ]; then
+          echo "::error::RPK 超出 7MB 体积红线"
+          exit 1
+        fi
+
+    - name: Upload RPK artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: dictionary-release-rpk
+        path: dist/*.rpk
+        retention-days: 30
+
+    # artifact 下载下来是 zip 包装，直接安装会显示「没有包名」。
+    # 原始 .rpk 以 Release asset 形式发布，下载即为可直接安装的文件，
+    # 固定下载地址: releases/latest/download/<包名>.release.<版本>.rpk
+    - name: Publish raw RPK to GitHub Release
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        set -euo pipefail
+        RPK=$(ls dist/*.rpk | head -n1)
+        VER=$(node -p "require('./src/manifest.json').versionName")
+        TAG="v$(node -p "require('./src/manifest.json').versionCode")"
+        if gh release view "$TAG" >/dev/null 2>&1; then
+          gh release upload "$TAG" "$RPK" --clobber
+          gh release edit "$TAG" --latest
+        else
+          gh release create "$TAG" "$RPK" \
+            --title "词典 $VER" \
+            --notes "Action 自动构建的原始 RPK 安装包，可直接安装。勿使用 Artifacts 里的 zip(那是打包下载容器,直接装会显示没有包名)。" \
+            --latest
+        fi

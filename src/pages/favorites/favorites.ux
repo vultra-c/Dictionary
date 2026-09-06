@@ -1,0 +1,188 @@
+<!--
+  词典 · 生词本（336×480，闪念小抄风格）
+  列表读取 storage 中 dict_favs（进入时重拉），点击词行进入详情，
+  底部「清空生词本」二次确认。右滑/返回键返回。
+-->
+<template>
+  <div class="page" @swipe="onSwipe">
+
+    <list class="list" show="{{favs.length > 0}}">
+      <list-item for="{{favs}}" tid="id" class="fav-item" type="fav" @click="openDetail($item)">
+        <div class="fav-content">
+          <text class="fav-word">{{$item.word}}</text>
+          <text class="fav-sense" if="{{$item.sense}}">{{$item.sense}}</text>
+        </div>
+        <img static src="/common/images/enter.png" class="fav-arrow" />
+      </list-item>
+      <list-item type="clear" class="fav-clear" @click="clearAll">
+        <div class="fav-content center">
+          <text class="fav-clear-t">{{confirming ? '再点一次确认清空' : '清空生词本'}}</text>
+        </div>
+      </list-item>
+    </list>
+
+    <!-- 空态 -->
+    <div class="empty" show="{{favs.length === 0}}">
+      <img static src="/common/images/empty_state.png" class="empty-img" />
+      <text class="empty-t">暂无收藏，查词页点「+ 收藏」加入</text>
+    </div>
+
+    <!-- 顶栏（闪念小抄同款） -->
+    <img static src="/common/images/hd.png" class="hd-bg" />
+    <img static src="/common/images/back.png" class="hd-back" @click="goBack" />
+    <text static class="hd-sub">查过即藏</text>
+    <text static class="hd-title">生词本</text>
+
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import prompt from '@system.prompt'
+import { loadFavs, clearFavs } from '../../common/logic/fav.js'
+import { findExact, entryAt } from '../../common/logic/dict.js'
+
+export default {
+  private: {
+    favs: [],
+    confirming: false
+  },
+
+  onShow() { this.confirming = false; this.refresh() },
+
+  refresh() {
+    const me = this
+    loadFavs((words) => {
+      const rows = []
+      for (let i = 0; i < words.length; i++) {
+        const w = words[i]
+        let sense = ''
+        const idx = findExact(w)
+        if (idx >= 0) {
+          const e = entryAt(idx)
+          sense = e.trans.split('；')[0]
+          if (!sense && e.ex && e.ex[0] === '=') {
+            const cut = e.ex.indexOf(':')
+            sense = (cut > 0 ? e.ex.slice(1, cut) : e.ex.slice(1)) + ' 的变形'
+          }
+        }
+        rows.push({ id: 'f' + i + '_' + w, word: w, sense })
+      }
+      me.favs = rows
+    })
+  },
+
+  openDetail(item) {
+    if (!item || !item.word) return
+    this.$app.$def.dictWord = item.word
+    router.push({ uri: 'pages/detail' })
+  },
+
+  clearAll() {
+    // 两步确认（手表无弹窗专属样式风险，内联文案变化即可二次确认）
+    if (!this.confirming) {
+      this.confirming = true
+      prompt.showToast({ message: '再点一次确认清空全部收藏', duration: 1500 })
+      return
+    }
+    const me = this
+    clearFavs(() => {
+      me.confirming = false
+      me.refresh()
+      prompt.showToast({ message: '已清空', duration: 900 })
+    })
+  },
+
+  goBack() { router.back() },
+
+  onSwipe(e) {
+    if (e && e.direction === 'right') router.back()
+  },
+
+  onBackPress() {
+    router.back()
+    return true
+  }
+}
+</script>
+
+<style>
+@import '../../common/style.css';
+
+.list {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 336px;
+  height: 480px;
+  padding: 102px 6px 8px;
+}
+.fav-item {
+  width: 100%;
+  height: 78px;
+  padding: 10px 18px;
+  margin-bottom: 6px;
+  background-color: #262626;
+  border-radius: 28px;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+.fav-content {
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  height: 100%;
+  overflow: hidden;
+}
+.fav-word {
+  font-size: 26px;
+  font-weight: bold;
+  color: #ffffff;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+.fav-sense {
+  font-size: 20px;
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.62);
+  lines: 1;
+  text-overflow: ellipsis;
+}
+.fav-arrow {
+  width: 40px;
+  height: 40px;
+}
+.fav-clear {
+  margin-top: 10px;
+  width: 100%;
+  height: 60px;
+  background-color: #262626;
+  border-radius: 30px;
+  justify-content: center;
+  align-items: center;
+}
+.fav-clear-t {
+  font-size: 24px;
+  font-weight: bold;
+  color: #ff5555;
+}
+
+.empty {
+  position: absolute;
+  left: 0px;
+  top: 160px;
+  width: 336px;
+  flex-direction: column;
+  align-items: center;
+}
+.empty-img {
+  width: 140px;
+  height: 140px;
+}
+.empty-t {
+  margin-top: 16px;
+  font-size: 22px;
+  color: rgba(255, 255, 255, 0.4);
+}
+</style>

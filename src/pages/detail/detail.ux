@@ -1,0 +1,373 @@
+<!--
+  词典 · 词条详情页（336×480，闪念小抄风格）
+  内容区块（自上而下，list 多 type 行）：
+    - 头部卡：词 + 角色副题（went → "go 的过去式"）+ 收藏芯片；
+    - 音标 / 释义（多行）；
+    - 词形变化（过去式/过去分词/现在分词/三单/复数/比较级/最高级）芯片，点击跳转该词形；
+    - 词形还原（反查词条 → 词根链接，如 went → go）与派生还原（规则猜测，如 creation → create）；
+    - 派生词（规则生成候选 + 词典验证，如 create → creation/creative/creator），点击跳转。
+  右滑/返回键返回上一页（搜索页或上层词条）。
+-->
+<template>
+  <div class="page" @swipe="onSwipe">
+
+    <!-- 头部卡：词 + 副题 + 收藏 -->
+    <div class="head-card">
+      <text class="head-word">{{word}}</text>
+      <text class="head-sub" if="{{headSub}}">{{headSub}}</text>
+      <div class="fav-chip {{favOn ? 'fav-on' : ''}}" @click="toggleFav">
+        <text class="fav-t {{favOn ? 'fav-t-on' : ''}}">{{favOn ? '已收藏' : '+ 收藏'}}</text>
+      </div>
+    </div>
+
+    <!-- 内容列表：统一 type=row 单 DOM，行内结构差异用 show 表达（真机铁律：for+if 不同用） -->
+    <list class="dlist" show="{{rows.length > 0}}">
+      <list-item for="{{rows}}" tid="id" type="row" class="d-row {{$item.cls}}" @click="open($item)">
+        <text class="sec-label" show="{{$item.type === 'sec'}}">{{$item.text}}</text>
+        <text class="sense-t" show="{{$item.type === 'sense'}}">{{$item.text}}</text>
+        <text class="note-t" show="{{$item.type === 'note'}}">{{$item.text}}</text>
+        <div class="chip-box" show="{{$item.type === 'chip'}}">
+          <text class="chip-k" show="{{$item.label}}">{{$item.label}}</text>
+          <text class="chip-v">{{$item.word}}</text>
+          <text class="chip-sfx" show="{{$item.suffix}}">{{$item.suffix}}</text>
+          <img static src="/common/images/enter.png" class="chip-arrow" />
+        </div>
+        <div class="link-box" show="{{$item.type === 'link'}}">
+          <text class="link-k">{{$item.label}}</text>
+          <text class="link-v">{{$item.word}}</text>
+          <text class="link-sense" show="{{$item.sense}}">{{$item.sense}}</text>
+        </div>
+      </list-item>
+    </list>
+
+    <!-- 顶栏（闪念小抄同款） -->
+    <img static src="/common/images/hd.png" class="hd-bg" />
+    <img static src="/common/images/back.png" class="hd-back" @click="goBack" />
+    <text static class="hd-sub">{{headerSub}}</text>
+    <text static class="hd-title">词条</text>
+
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import prompt from '@system.prompt'
+import { findExact, entryAt } from '../../common/logic/dict.js'
+import { parseExchange, roleLabel, forwardDerive, reverseStem } from '../../common/logic/forms.js'
+import { loadFavs, isFav, toggleFav } from '../../common/logic/fav.js'
+
+export default {
+  private: {
+    word: '',
+    headSub: '',
+    headerSub: '词条详情',
+    favOn: false,
+    rows: []
+  },
+
+  onInit() { this.build() },
+  onShow() {
+    // 收藏列表回来/钻取返回时重拉状态
+    const w = this.$app.$def.dictWord
+    if (w && w !== this.word) {
+      this.build()
+    } else {
+      const me = this
+      loadFavs(() => { me.favOn = isFav(me.word) })
+    }
+  },
+
+  build() {
+    const w = String(this.$app.$def.dictWord || '')
+    if (!w) { goBackSafe(); return }
+    this.word = w
+    const exists = (s) => findExact(s) >= 0
+    const idx = findExact(w)
+    const rec = idx >= 0 ? entryAt(idx) : null
+    const ex = rec ? parseExchange(rec.ex) : { lemma: '', role: '', forms: [] }
+    // 词根词条（反查词条的被指向体）
+    let rootRec = null
+    if (ex.lemma) {
+      const ri = findExact(ex.lemma)
+      rootRec = ri >= 0 ? entryAt(ri) : null
+    }
+
+    // —— 头部 ——
+    if (ex.lemma) {
+      this.headSub = ex.lemma + ' 的' + (roleLabel(ex.role) || '变形')
+      this.headerSub = '词形反查'
+    } else {
+      this.headSub = rec && rec.ph ? '/' + rec.ph + '/' : ''
+      this.headerSub = '词条详情'
+    }
+
+    const rows = []
+    let idc = 0
+    const CLS = { sec: 'row-sec', sense: 'row-sense', chip: 'row-chip', link: 'row-link', note: 'row-note' }
+    const push = (type, o) => { o.type = type; o.cls = CLS[type]; o.id = 'd' + (idc++); rows.push(o) }
+
+    if (rec) {
+      // 音标行：本身没有（反查精简）则回填词根的音标
+      const ph = rec.ph || (rootRec && rootRec.ph) || ''
+      if (ph) {
+        push('sec', { text: '音标' })
+        push('sense', { text: '/' + ph + '/' })
+      }
+      // 释义行
+      const tr = rec.trans || (rootRec && rootRec.trans) || ''
+      if (tr) {
+        push('sec', { text: ex.lemma && !rec.trans ? '释义（据 ' + ex.lemma + '）' : '释义' })
+        const parts = tr.split('；')
+        for (let i = 0; i < parts.length; i++) push('sense', { text: parts[i] })
+      }
+      // 词形变化（词根条目）
+      if (ex.forms.length) {
+        push('sec', { text: '词形变化' })
+        for (let i = 0; i < ex.forms.length; i++) {
+          const f = ex.forms[i]
+          push('chip', { label: f.label, word: f.v })
+        }
+      }
+    } else {
+      push('note', { text: '未收录该词，试试词干还原' })
+    }
+
+    // 词形还原（反查词条 → 词根）
+    if (ex.lemma) {
+      push('sec', { text: '词形还原' })
+      push('link', {
+        label: roleLabel(ex.role) || '原形',
+        word: ex.lemma,
+        sense: rootRec ? rootRec.trans : ''
+      })
+    } else {
+      // 派生还原（规则猜测 + 词典验证：creation → create）
+      const stems = reverseStem(w, exists)
+      if (stems.length) {
+        push('sec', { text: '词根还原' })
+        for (let i = 0; i < stems.length; i++) {
+          const st = stems[i]
+          const si = findExact(st.stem)
+          push('link', {
+            label: '词根 -' + st.suffix,
+            word: st.stem,
+            sense: si >= 0 ? entryAt(si).trans : ''
+          })
+        }
+      }
+    }
+
+    // 派生词（规则生成 + 词典验证：create → creation/creative/creator）
+    const deriveBase = ex.lemma || w
+    const derivs = forwardDerive(deriveBase, exists)
+    if (derivs.length) {
+      push('sec', { text: '派生词' })
+      for (let i = 0; i < derivs.length; i++) {
+        push('chip', { label: '', word: derivs[i].word, suffix: '-' + derivs[i].suffix })
+      }
+    }
+
+    this.rows = rows
+    const me = this
+    loadFavs(() => { me.favOn = isFav(me.word) })
+  },
+
+  toggleFav() {
+    const me = this
+    const r = toggleFav(this.word, () => {
+      me.favOn = isFav(me.word)
+    })
+    if (r === 'added') prompt.showToast({ message: '已加入生词本', duration: 900 })
+    else if (r === 'removed') prompt.showToast({ message: '已移出生词本', duration: 900 })
+  },
+
+  open(item) {
+    if (!item || !item.word) return
+    if (findExact(item.word) < 0) {
+      prompt.showToast({ message: '未收录 ' + item.word, duration: 1200 })
+      return
+    }
+    this.$app.$def.dictWord = item.word
+    router.push({ uri: 'pages/detail' })
+  },
+
+  goBack() { router.back() },
+
+  onSwipe(e) {
+    if (e && e.direction === 'right') router.back()
+  },
+
+  onBackPress() {
+    router.back()
+    return true
+  }
+}
+
+function goBackSafe() {
+  try { router.back() } catch (e) { /* ignore */ }
+}
+</script>
+
+<style>
+@import '../../common/style.css';
+
+/* ---- 头部卡 ---- */
+.head-card {
+  position: absolute;
+  left: 6px;
+  top: 104px;
+  width: 324px;
+  min-height: 108px;
+  border-radius: 36px;
+  background-color: #262626;
+  padding: 18px 96px 18px 22px;
+  flex-direction: column;
+  justify-content: center;
+}
+.head-word {
+  font-size: 34px;
+  font-weight: bold;
+  color: #ffffff;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+.head-sub {
+  font-size: 22px;
+  color: #4da3ff;
+  margin-top: 6px;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+.fav-chip {
+  position: absolute;
+  right: 14px;
+  top: 20px;
+  height: 52px;
+  min-width: 76px;
+  padding: 0 14px;
+  border-radius: 26px;
+  background-color: rgba(13, 110, 255, 0.22);
+  justify-content: center;
+  align-items: center;
+}
+.fav-on {
+  background-color: #0d6eff;
+}
+.fav-t {
+  font-size: 22px;
+  font-weight: bold;
+  color: #4da3ff;
+}
+.fav-t-on {
+  color: #ffffff;
+}
+
+/* ---- 内容列表 ---- */
+.dlist {
+  position: absolute;
+  left: 0px;
+  top: 226px;
+  width: 336px;
+  height: 254px;
+  padding: 0px 6px 8px;
+}
+/* 列表行容器：尺寸与底饰由 cls 控制，行内结构差异由 show 表达 */
+.d-row {
+  width: 100%;
+  margin-bottom: 6px;
+}
+.row-sec {
+  padding: 8px 8px 2px;
+}
+.row-sense {
+  padding: 2px 8px 6px;
+}
+.row-note {
+  padding: 10px;
+}
+.row-chip {
+  height: 60px;
+  background-color: #262626;
+  border-radius: 26px;
+  padding: 0 12px 0 16px;
+  flex-direction: row;
+  align-items: center;
+}
+.row-link {
+  min-height: 72px;
+  background-color: #1a1a1a;
+  border-radius: 28px;
+  border-width: 2px;
+  border-color: #0d6eff;
+  padding: 10px 12px 10px 16px;
+  flex-direction: row;
+  align-items: center;
+}
+
+.sec-label {
+  font-size: 20px;
+  color: rgba(255, 255, 255, 0.45);
+}
+.sense-t {
+  font-size: 24px;
+  line-height: 30px;
+  color: #ffffff;
+}
+.note-t {
+  font-size: 22px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* 变形/派生芯片行 */
+.chip-box {
+  flex-direction: row;
+  align-items: center;
+}
+.chip-k {
+  font-size: 22px;
+  color: #4da3ff;
+  padding-right: 10px;
+}
+.chip-v {
+  flex: 1;
+  font-size: 24px;
+  font-weight: bold;
+  color: #ffffff;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+.chip-sfx {
+  font-size: 20px;
+  color: rgba(255, 255, 255, 0.4);
+  padding-left: 8px;
+}
+.chip-arrow {
+  width: 36px;
+  height: 36px;
+  margin-left: 6px;
+}
+
+/* 词根还原链接行 */
+.link-box {
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+}
+.link-k {
+  font-size: 20px;
+  color: #4da3ff;
+}
+.link-v {
+  font-size: 26px;
+  font-weight: bold;
+  color: #ffffff;
+  lines: 1;
+}
+.link-sense {
+  font-size: 20px;
+  color: rgba(255, 255, 255, 0.55);
+  margin-top: 2px;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+</style>

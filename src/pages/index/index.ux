@@ -1,0 +1,77 @@
+<!--
+  词典 · 主页（336×480）
+  闪念小抄 UI 风格：hd.png 顶栏 + 双行居中标题 + 112px 大圆角功能卡片列表。
+  右滑 / 返回键退出应用。右上角 more 直达设置。
+  3 个功能项：查词 / 生词本 / 设置。
+  hd.png 顶栏自身即渐变遮罩（原版设计），不叠额外遮罩层。
+-->
+<template>
+  <div class="page" @swipe="onSwipe">
+
+    <!-- 功能卡片列表（3 项，可滚动） -->
+    <list class="list" id="menuList">
+      <list-item for="{{menu}}" tid="id" class="item" type="menu" @click="go($item)">
+        <div class="item-content">
+          <text class="itemtext">{{$item.title}}</text>
+          <text class="itemtext2">{{$item.sub}}</text>
+        </div>
+        <img static src="/common/images/enter.png" class="arrow" />
+      </list-item>
+    </list>
+
+    <!-- 顶栏（闪念小抄同款：底图 + 返回 + 双行居中标题；右上角 more 进设置） -->
+    <img static src="/common/images/hd.png" class="hd-bg" />
+    <img static src="/common/images/back.png" class="hd-back" @click="exitApp" />
+    <img static src="/common/images/more.png" class="hd-more" @click="goSettings" />
+    <text static class="hd-sub">离线英汉双向</text>
+    <text static class="hd-title">词典</text>
+
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import app from '@system.app'
+import { loadSettings, applyKeepScreenOn } from '../../common/logic/settings.js'
+
+export default {
+  private: {
+    menu: [
+      { id: 'm1', uri: 'pages/search', title: '查词', sub: '英汉查询 · 汉英互译 · 前缀扩散' },
+      { id: 'm2', uri: 'pages/favorites', title: '生词本', sub: '收藏的词随时回看' },
+      { id: 'm3', uri: 'pages/settings', title: '设置', sub: '常亮 · 振动 · 关于' }
+    ]
+  },
+
+  onShow() {
+    loadSettings((s) => {
+      if (s.keepScreenOn) applyKeepScreenOn(true)
+    })
+  },
+
+  go(item) {
+    if (item && item.uri) {
+      router.push({ uri: item.uri })
+    }
+  },
+  goSettings() {
+    router.push({ uri: 'pages/settings' })
+  },
+  exitApp() {
+    app.terminate()
+  },
+  onSwipe(e) {
+    if (e && e.direction === 'right') {
+      app.terminate()
+    }
+  },
+  onBackPress() {
+    app.terminate()
+    return true
+  }
+}
+</script>
+
+<style>
+@import '../../common/style.css';
+</style>

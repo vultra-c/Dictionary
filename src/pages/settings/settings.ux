@@ -1,0 +1,101 @@
+<!--
+  词典 · 设置中心（336×480，闪念小抄风格；与化学工具箱设置页同构）
+  主页右上角 more 或菜单进入；「常亮显示/按键振动」点击开关并立即生效；
+  常亮记忆：storage 持久化 + app.ux onCreate 重新应用。
+-->
+<template>
+  <div class="page" @swipe="onSwipe">
+
+    <list class="list">
+      <list-item for="{{menu}}" tid="id" class="item" type="menu" @click="go($item)">
+        <div class="item-content">
+          <text class="itemtext">{{$item.title}}</text>
+          <text class="itemtext2">{{$item.sub}}</text>
+        </div>
+        <img static src="/common/images/enter.png" class="arrow" />
+      </list-item>
+    </list>
+
+    <!-- 顶栏（闪念小抄同款） -->
+    <img static src="/common/images/hd.png" class="hd-bg" />
+    <img static src="/common/images/back.png" class="hd-back" @click="goBack" />
+    <text static class="hd-sub">偏好与常亮</text>
+    <text static class="hd-title">设置</text>
+
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import prompt from '@system.prompt'
+import { loadSettings, saveSettings, applyKeepScreenOn } from '../../common/logic/settings.js'
+
+export default {
+  private: {
+    menu: [
+      { id: 'keepscreen', title: '常亮显示', sub: '已关闭' },
+      { id: 'vibrate', title: '按键振动', sub: '已开启' },
+      { id: 'about', uri: 'pages/about', title: '关于词典', sub: '版本 · 词库来源 · 特性' }
+    ]
+  },
+
+  onInit() { this.refreshAll() },
+  onShow() { this.refreshAll() },
+
+  refreshAll() {
+    loadSettings((s) => {
+      const next = this.menu.slice()
+      next[0] = Object.assign({}, next[0], { sub: s.keepScreenOn ? '已开启 · 注意耗电' : '已关闭' })
+      next[1] = Object.assign({}, next[1], { sub: s.vibrate !== false ? '已开启' : '已关闭' })
+      this.menu = next
+    })
+  },
+
+  go(item) {
+    if (!item) return
+    if (item.id === 'keepscreen') { this.toggleKeepScreen(); return }
+    if (item.id === 'vibrate') { this.toggleVibrate(); return }
+    if (item.uri) router.push({ uri: item.uri })
+  },
+
+  toggleKeepScreen() {
+    loadSettings((s) => {
+      const next = !s.keepScreenOn
+      const me = this
+      applyKeepScreenOn(next, (ok, err) => {
+        if (!ok) { prompt.showToast({ message: err || '常亮设置失败', duration: 1200 }); return }
+        saveSettings({ keepScreenOn: next }, () => {
+          me.refreshAll()
+          prompt.showToast({ message: next ? '常亮已开启' : '常亮已关闭', duration: 900 })
+        })
+      })
+    })
+  },
+
+  toggleVibrate() {
+    loadSettings((s) => {
+      const next = s.vibrate === false ? true : false
+      const me = this
+      saveSettings({ vibrate: next }, () => {
+        me.refreshAll()
+        prompt.showToast({ message: next ? '按键振动已开启' : '按键振动已关闭', duration: 900 })
+      })
+    })
+  },
+
+  goBack() { router.back() },
+
+  onSwipe(e) {
+    if (e && e.direction === 'right') router.back()
+  },
+
+  onBackPress() {
+    router.back()
+    return true
+  }
+}
+</script>
+
+<style>
+@import '../../common/style.css';
+</style>

@@ -1,0 +1,28 @@
+{
+  "name": "com.whyy.dictionary",
+  "version": "1.0.0",
+  "description": "词典（离线英汉双向）- 小米 Vela 轻应用，适配小米手环 9 Pro（336×480）",
+  "engines": {
+    "node": ">=8.10"
+  },
+  "scripts": {
+    "start": "aiot server --watch --open-nuttx",
+    "build": "aiot build",
+    "release": "aiot release --enable-jsc",
+    "watch": "aiot watch --open-nuttx",
+    "gen:icon": "node tools/gen-icon.mjs",
+    "gen:dict": "node tools/gen-dict.mjs",
+    "postinstall": "node scripts/patch-aiotpack.js"
+  },
+  "devDependencies": {
+    "@aiot-toolkit/velasim": "^0.1.25",
+    "aiot-toolkit": "^2.0.5",
+    "terser-webpack-plugin": "^5.6.1"
+  },
+  "dependencies": {
+    "@aiot-toolkit/jsc": "^1.0.7"
+  },
+  "browserslist": [
+    "chrome 65"
+  ]
+}

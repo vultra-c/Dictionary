@@ -1,0 +1,7 @@
+node_modules/
+dist/
+build/
+*.log
+.DS_Store
+# ECDICT 源数据（65MB，不入库；需要时重新下载到该路径再跑 npm run gen:dict）
+tools/ecdict.csv

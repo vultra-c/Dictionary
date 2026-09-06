@@ -1,0 +1,66 @@
+{
+  "package": "com.whyy.dictionary",
+  "name": "词典",
+  "versionName": "V26.9.1.DICT",
+  "versionCode": 2609001,
+  "minPlatformVersion": 1200,
+  "minAPILevel": 1,
+  "icon": "/common/images/icon.png",
+  "deviceTypeList": [
+    "watch"
+  ],
+  "features": [
+    {
+      "name": "system.router"
+    },
+    {
+      "name": "system.app"
+    },
+    {
+      "name": "system.prompt"
+    },
+    {
+      "name": "system.vibrator"
+    },
+    {
+      "name": "system.device"
+    },
+    {
+      "name": "system.storage"
+    },
+    {
+      "name": "system.brightness"
+    }
+  ],
+  "config": {
+    "logLevel": "error",
+    "designWidth": 336
+  },
+  "router": {
+    "entry": "pages/index",
+    "pages": {
+      "pages/index": {
+        "component": "index",
+        "launchMode": "singleTask"
+      },
+      "pages/search": {
+        "component": "search"
+      },
+      "pages/detail": {
+        "component": "detail"
+      },
+      "pages/favorites": {
+        "component": "favorites"
+      },
+      "pages/settings": {
+        "component": "settings"
+      },
+      "pages/about": {
+        "component": "about"
+      }
+    }
+  },
+  "display": {
+    "backgroundColor": "#000000"
+  }
+}

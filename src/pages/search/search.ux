@@ -1,0 +1,330 @@
+<import name="input-method" src="../../components/InputMethod/InputMethod.ux"></import>
+
+<!--
+  词典 · 查词页（336×480，闪念小抄风格）
+  交互与考点阅读器搜索页对齐：
+  - 顶部药丸搜索框（点击弹/收键盘），搜索结果区块渲染，键盘弹出时结果隐藏
+    （键盘中英文模式候选行会实时出词典前缀词，如输入 ap 沿列即弹 apple）；
+  - 每次按键/删除即时查询（英文二分扩散 ~17 次比较；中文原语扫描 ≤10ms）；
+  - 行结构统一：词 + 音标 + 首义；点击进入详情页。
+-->
+<template>
+  <div class="page" @swipe="onSwipe">
+
+    <!-- 搜索框（y=104，键盘遮挡安全区之上） -->
+    <div class="search-box" @click="toggleKb">
+      <text class="search-ph" show="{{query.length === 0}}">输入英文单词或中文</text>
+      <div class="value-row" show="{{query.length > 0}}">
+        <text class="search-value">{{query}}</text>
+        <text if="{{showKb}}" class="search-caret">_</text>
+      </div>
+    </div>
+
+    <!-- 清空（独立元素避免点着冲突；位于键盘遮挡安全区之上） -->
+    <div class="clear-btn" show="{{query.length > 0 && showKb}}" @click="clearAll">
+      <text class="clear-t">清空</text>
+    </div>
+
+    <!-- 结果列表：键盘弹出时隐藏（候选反馈键已带），收回后整体呈现 -->
+    <list class="result-list" show="{{!showKb && rows.length > 0}}" onscrollbottom="onReachBottom">
+      <list-item class="res-item" type="row" for="{{visibleRows}}" tid="id" @click="openDetail($item)">
+        <div class="res-content">
+          <text class="res-word">{{$item.word}}<text if="{{$item.ph}}" class="res-ph">  /{{$item.ph}}/</text></text>
+          <text class="res-sense">{{$item.sense}}</text>
+        </div>
+        <img static src="/common/images/enter.png" class="res-arrow" />
+      </list-item>
+      <list-item if="{{hasMore}}" type="more" class="res-more" @click="loadMore">
+        <div class="res-content">
+          <text class="res-sense more-t">加载更多（{{restCount}}）</text>
+        </div>
+      </list-item>
+    </list>
+
+    <!-- 无结果提示 -->
+    <text class="empty-hint" show="{{!showKb && hasSearched && rows.length === 0}}">未找到相关词条，试试减字/换词</text>
+
+    <!-- 顶栏（闪念小抄同款） -->
+    <img static src="/common/images/hd.png" class="hd-bg" />
+    <img static src="/common/images/back.png" class="hd-back" @click="goBack" />
+    <text static class="hd-sub">英汉 · 汉英互查</text>
+    <text static class="hd-title">查词</text>
+
+    <!-- 共享输入法（中/英；英文词候选联动词典） -->
+    <input-method hide="{{!showKb}}" keyboardtype="QWERTY" screentype="rect" maxlength="10"
+      vibratemode="{{vibrateMode}}" @complete="onInput" @delete="onDel"></input-method>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import prompt from '@system.prompt'
+import { search, entryAt } from '../../common/logic/dict.js'
+import { loadSettings } from '../../common/logic/settings.js'
+
+// 结果分块渲染参数：首屏 18 行，滚动/点按「加载更多」追加
+const CHUNK = 18
+
+export default {
+  private: {
+    query: '',
+    showKb: true,
+    vibrateMode: 'short',
+    allRows: [],
+    rows: [],
+    visibleRows: [],
+    renderPos: 0,
+    hasSearched: false,
+    hasMore: false,
+    restCount: 0
+  },
+
+  onInit() {
+    loadSettings((s) => {
+      this.vibrateMode = s.vibrate === false ? '' : 'short'
+    })
+  },
+
+  toggleKb() {
+    this.showKb = !this.showKb
+  },
+
+  onInput(e) {
+    if (!e || !e.detail) return
+    const ch = String(e.detail.content || '')
+    if (!ch) return
+    if (this.query.length >= 30) return
+    // 丢弃空格等杂字符（中文为 \u4e00-\u9fa5 直接可取）
+    if (/^[ A-Za-z]+$/.test(ch)) {
+      const trimmed = ch.trim()
+      if (!trimmed) return
+      this.query += trimmed
+    } else {
+      this.query += ch
+    }
+    this.runSearch()
+  },
+
+  onDel() {
+    if (this.query.length > 0) {
+      this.query = this.query.slice(0, -1)
+      this.runSearch()
+    }
+  },
+
+  clearAll() {
+    this.query = ''
+    this.runSearch()
+  },
+
+  runSearch() {
+    const q = this.query.trim()
+    if (!q) {
+      this.allRows = []
+      this.applyRows([])
+      this.hasSearched = false
+      return
+    }
+    this.hasSearched = true
+    // 关键路径全部不大于毫秒级：无延时器防抖，直接同步查（实测表端无感）。
+    const rst = search(q, 60)
+    const rows = []
+    const seen = {}
+    for (var i = 0; i < rst.rows.length; i++) {
+      const e = entryAt(rst.rows[i])
+      if (seen[e.word]) continue
+      seen[e.word] = true
+      rows.push(this.toRow(i, e))
+      if (rows.length >= 60) break
+    }
+    this.applyRows(rows)
+  },
+
+  applyRows(rows) {
+    this.rows = rows
+    const vis = rows.slice(0, CHUNK)
+    this.visibleRows = vis
+    this.renderPos = vis.length
+    this.hasMore = rows.length > vis.length
+    this.restCount = Math.max(0, rows.length - vis.length)
+  },
+
+  toRow(i, e) {
+    let sense = e.trans
+    if (!sense && e.ex && e.ex[0] === '=') {
+      // 纯反查词条：结构化释义（went 条 → 显示 "go 的过去式"）
+      const cut = e.ex.indexOf(':')
+      const lm = cut > 0 ? e.ex.slice(1, cut) : e.ex.slice(1)
+      const rl = cut > 0 ? e.ex.slice(cut + 1) : ''
+      const labelMap = { p: '过去式', d: '过去分词', i: '现在分词', 3: '三单', s: '复数', r: '比较级', t: '最高级' }
+      sense = lm + ' 的' + (labelMap[rl] || '变形')
+    }
+    return {
+      id: 'r' + i + '_' + e.word,
+      word: e.word,
+      ph: e.ph,
+      sense: sense || '(纯词形变化)'
+    }
+  },
+
+  loadMore() {
+    if (!this.hasMore) return
+    const end = Math.min(this.renderPos + CHUNK, this.rows.length)
+    this.visibleRows = this.rows.slice(0, end)
+    this.renderPos = end
+    this.hasMore = end < this.rows.length
+    this.restCount = Math.max(0, this.rows.length - end)
+  },
+
+  onReachBottom() {
+    this.loadMore()
+  },
+
+  openDetail(item) {
+    if (!item || !item.word) return
+    this.$app.$def.dictWord = item.word
+    router.push({ uri: 'pages/detail' })
+  },
+
+  goBack() { router.back() },
+
+  onSwipe(e) {
+    if (e && e.direction === 'right') {
+      if (this.showKb) this.showKb = false
+      else router.back()
+    }
+  },
+
+  onBackPress() {
+    if (this.showKb) this.showKb = false
+    else router.back()
+    return true
+  }
+}
+</script>
+
+<style>
+@import '../../common/style.css';
+
+/* ---- 搜索框（顶部安全区 y=104） ---- */
+.search-box {
+  position: absolute;
+  left: 6px;
+  top: 104px;
+  width: 324px;
+  height: 64px;
+  border-radius: 32px;
+  background-color: #262626;
+  padding: 8px 18px;
+  justify-content: center;
+}
+.search-ph {
+  font-size: 24px;
+  color: rgba(255, 255, 255, 0.38);
+}
+.value-row {
+  width: 288px;
+  flex-direction: row;
+  align-items: center;
+}
+.search-value {
+  width: 270px;
+  font-size: 26px;
+  color: #ffffff;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+.search-caret {
+  font-size: 26px;
+  color: #0d84ff;
+}
+
+.clear-btn {
+  position: absolute;
+  left: 6px;
+  top: 176px;
+  width: 84px;
+  height: 44px;
+  border-radius: 22px;
+  background-color: #333333;
+  justify-content: center;
+  align-items: center;
+}
+.clear-t {
+  font-size: 22px;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* ---- 结果列表 ---- */
+.result-list {
+  position: absolute;
+  left: 0px;
+  top: 180px;
+  width: 336px;
+  height: 300px;
+  padding: 0px 6px 8px;
+}
+.res-item {
+  width: 100%;
+  height: 84px;
+  padding: 10px 18px;
+  margin-bottom: 6px;
+  background-color: #262626;
+  border-radius: 28px;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+.res-more {
+  width: 100%;
+  height: 64px;
+  padding: 10px 18px;
+  margin-bottom: 6px;
+  background-color: #1a1a1a;
+  border-radius: 28px;
+  justify-content: center;
+  align-items: center;
+}
+.more-t {
+  text-align: center;
+}
+.res-content {
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  height: 100%;
+  overflow: hidden;
+}
+.res-word {
+  font-size: 26px;
+  font-weight: bold;
+  color: #ffffff;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+.res-ph {
+  font-size: 20px;
+  color: #4da3ff;
+}
+.res-sense {
+  font-size: 20px;
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.62);
+  lines: 1;
+  text-overflow: ellipsis;
+}
+.res-arrow {
+  width: 40px;
+  height: 40px;
+}
+
+.empty-hint {
+  position: absolute;
+  left: 16px;
+  top: 200px;
+  width: 304px;
+  font-size: 22px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.35);
+}
+</style>

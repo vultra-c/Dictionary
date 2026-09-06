@@ -1,0 +1,89 @@
+<!--
+  词典 · 关于页（336×480，闪念小抄风格）
+  静态信息列表：名称 / 包名 / 版本 / 词库规模 / 数据致谢 / 特性。
+-->
+<template>
+  <div class="page" @swipe="onSwipe">
+
+    <list class="list">
+      <list-item for="{{rows}}" tid="id" class="row-item" type="row">
+        <div class="row-content">
+          <text class="row-k">{{$item.k}}</text>
+          <text class="row-v">{{$item.v}}</text>
+        </div>
+      </list-item>
+    </list>
+
+    <!-- 顶栏（闪念小抄同款） -->
+    <img static src="/common/images/hd.png" class="hd-bg" />
+    <img static src="/common/images/back.png" class="hd-back" @click="goBack" />
+    <text static class="hd-sub">版本与致谢</text>
+    <text static class="hd-title">关于</text>
+
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+
+export default {
+  private: {
+    rows: [
+      { id: 'a1', k: '名称', v: '词典（手环离线版）' },
+      { id: 'a2', k: '包名', v: 'com.whyy.dictionary' },
+      { id: 'a3', k: '版本', v: 'V26.9.1.DICT' },
+      { id: 'a4', k: '适配', v: '336×480 · 小米手环 9 Pro' },
+      { id: 'a5', k: '词库', v: '6.3 万词条（3.5 万主词条 + 2.8 万变形反查）' },
+      { id: 'a6', k: '数据', v: 'ECDICT 简明英汉词典（飞刀版词库裁剪）' },
+      { id: 'a7', k: '特性', v: '纯离线 · 英汉/汉英 · 前缀扩散 · 词形与派生 · 反向查询' }
+    ]
+  },
+
+  goBack() { router.back() },
+
+  onSwipe(e) {
+    if (e && e.direction === 'right') router.back()
+  },
+
+  onBackPress() {
+    router.back()
+    return true
+  }
+}
+</script>
+
+<style>
+@import '../../common/style.css';
+
+.list {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 336px;
+  height: 480px;
+  padding: 102px 6px 8px;
+}
+.row-item {
+  width: 100%;
+  min-height: 72px;
+  padding: 12px 20px;
+  margin-bottom: 6px;
+  background-color: #262626;
+  border-radius: 26px;
+  flex-direction: column;
+  justify-content: center;
+}
+.row-content {
+  flex-direction: column;
+}
+.row-k {
+  font-size: 20px;
+  color: rgba(255, 255, 255, 0.45);
+}
+.row-v {
+  margin-top: 4px;
+  font-size: 24px;
+  font-weight: bold;
+  color: #ffffff;
+}
+</style>
