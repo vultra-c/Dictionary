@@ -1,0 +1,14 @@
+{
+  "package": "com.vultrac.dictionary",
+  "name": "口袋词典",
+  "versionName": "1.0.0",
+  "versionCode": 10000,
+  "minPlatformVersion": 1200,
+  "minAPILevel": 1,
+  "icon": "/common/icon.png",
+  "deviceTypeList": ["watch"],
+  "features": [{"name":"system.file"},{"name":"system.app"}],
+  "config": {"designWidth":336,"logLevel":"error"},
+  "router": {"entry":"pages/index","pages":{"pages/index":{"component":"index","launchMode":"singleTask"}}},
+  "display": {"backgroundColor":"#000000"}
+}

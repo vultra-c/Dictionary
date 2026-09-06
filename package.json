@@ -1,0 +1,12 @@
+{
+  "name": "vela-pocket-dictionary",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "build": "aiot build --enable-jsc",
+    "release": "aiot release --enable-jsc"
+  },
+  "engines": { "node": ">=20" },
+  "browserslist": ["chrome 65"]
+}

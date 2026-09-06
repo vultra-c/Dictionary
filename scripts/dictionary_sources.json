@@ -1,0 +1,27 @@
+{
+  "ecdict": {
+    "commit": "bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b",
+    "url": "https://raw.githubusercontent.com/skywind3000/ECDICT/bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b/ecdict.csv",
+    "git_blob_sha1": "c4ade63ea08cf39d9c3475e96929036d64d94c94",
+    "license": "MIT",
+    "license_url": "https://raw.githubusercontent.com/skywind3000/ECDICT/bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b/LICENSE",
+    "license_git_blob_sha1": "594da8a1009c6a9b96d0fe8d1689aa192cf187fe"
+  },
+  "wordnet": {
+    "commit": "550b6625bcef1f2abff2ff770a5a0d272c9c6b2a",
+    "url": "https://raw.githubusercontent.com/nltk/nltk_data/550b6625bcef1f2abff2ff770a5a0d272c9c6b2a/packages/corpora/wordnet.zip",
+    "sha256": "cbda5ea6eef7f36a97a43d4a75f85e07fccbb4f23657d27b4ccbc93e2646ab59",
+    "license": "WordNet 3.0, Princeton University",
+    "license_member": "wordnet/LICENSE",
+    "hash_source": "https://raw.githubusercontent.com/nltk/nltk_data/550b6625bcef1f2abff2ff770a5a0d272c9c6b2a/index.xml"
+  },
+  "pinyin": {
+    "package": "pypinyin", "version": "0.53.0", "license": "MIT",
+    "url": "https://github.com/mozillazg/python-pinyin",
+    "wheel_sha256": "a906768919da3c31771f2c5e0e5a759214dc38d0087e15e6ff67649e03df8097"
+  },
+  "reviewed_derivations": [
+    {"words": ["act", "action"], "note": "Reviewed verb to noun: action is the act or process of acting."},
+    {"words": ["read", "readable"], "note": "Reviewed verb to adjective: readable means able to be read."}
+  ]
+}
