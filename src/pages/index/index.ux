@@ -1,7 +1,8 @@
 <template>
   <div class="page" @swipe="onSwipe">
-    <text class="back" @click="goBack">返回</text>
-    <text class="title">{{view === 'detail' ? '词条详情' : '口袋词典'}}</text>
+    <text class="hd-back" @click="goBack">返回</text>
+    <text class="hd-sub">离线英汉词典</text>
+    <text class="hd-title">{{view === 'detail' ? '词条详情' : '口袋词典'}}</text>
 
     <div if="{{view === 'search'}}" class="home">
       <text class="input" @click="showKeyboard">{{query || '输入英文 / 中文'}}</text>
@@ -184,7 +185,7 @@ export default {
     this.items = [];
     this.hasMore = false;
     this.status = '正在查询…';
-    this._api.search(query, offset, 12).then(result => {
+      this._api.search(query, offset, 12).then(result => {
       if (!this._alive || generation !== this._generation) return;
       this.items = result.items.slice(0, 12).map((item, index) => ({
         id: item.id, word: item.word, phonetic: item.phonetic,
@@ -195,11 +196,11 @@ export default {
       this.hasMore = result.hasMore;
       this.loading = false;
       this.status = this.items.length ? '第 ' + this.pageNumber + ' 页' : '没有找到结果';
-    }).catch(() => {
+    }).catch(error => {
       if (!this._alive || generation !== this._generation) return;
       this.loading = false;
       this.error = true;
-      this.status = '查询失败，请重试';
+      this.status = '查询失败：' + ((error && error.message) || '词库读取错误');
     });
   },
   retrySearch() { this.searchPage(this.offset, ++this._generation); },
@@ -279,10 +280,11 @@ export default {
       this.relationPage = 0;
       this.renderRelations();
       this.detailLoading = false;
-    }).catch(() => {
+    }).catch(error => {
       if (!this._alive || generation !== this._detailGeneration) return;
       this.detailLoading = false;
       this.detailError = true;
+      this.status = '读取失败：' + ((error && error.message) || '词库读取错误');
     });
   },
   renderRelations() {
@@ -317,9 +319,8 @@ export default {
 </script>
 
 <style>
-.page { width: 336px; height: 480px; background-color: #000; color: #ffffff; }
-.back { position: absolute; left: 6px; top: 12px; width: 72px; height: 48px; border-radius: 24px; background-color: #262626; color: #ffffff; font-size: 22px; text-align: center; }
-.title { position: absolute; left: 92px; top: 12px; width: 232px; height: 48px; font-size: 32px; font-weight: bold; color: #ffffff; }
+    @import '../../common/style.css';
+    .page { color: #ffffff; }
 .home { position: absolute; left: 0px; top: 72px; width: 336px; height: 408px; }
 .input { position: absolute; left: 6px; top: 0px; width: 246px; height: 60px; padding: 0px 16px; border-radius: 28px; background-color: #262626; color: #ffffff; font-size: 26px; lines: 1; text-overflow: ellipsis; }
 .clear { position: absolute; left: 258px; top: 0px; width: 72px; height: 60px; border-radius: 28px; background-color: #262626; color: #ffffff; font-size: 22px; text-align: center; }

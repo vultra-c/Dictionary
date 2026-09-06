@@ -1,0 +1,8 @@
+.page { width: 336px; height: 480px; background-color: #000000; }
+.hd-bg { position: absolute; left: 0px; top: 0px; width: 336px; height: 102px; background-color: #000000; }
+.hd-back { position: absolute; left: 6px; top: 6px; width: 72px; height: 72px; border-radius: 36px; background-color: #262626; color: #ffffff; font-size: 22px; text-align: center; }
+.hd-sub { position: absolute; left: 78px; top: 8px; width: 180px; height: 30px; color: rgba(255,255,255,0.6); font-size: 22px; text-align: center; }
+.hd-title { position: absolute; left: 78px; top: 36px; width: 180px; height: 42px; color: #ffffff; font-size: 32px; font-weight: bold; text-align: center; lines: 1; text-overflow: ellipsis; }
+.item { background-color: #262626; border-radius: 36px; }
+.btn-main { background-color: #0d6eff; border-radius: 36px; color: #ffffff; }
+.btn-ghost { background-color: #262626; border-radius: 36px; color: rgba(255,255,255,0.75); }
