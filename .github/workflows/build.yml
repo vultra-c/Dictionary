@@ -23,12 +23,14 @@ jobs:
         run: npm test
       - name: Install fixed toolchain
         run: |
-          npm install -g aiot-toolkit@2.0.5
+          npm install -g aiot-toolkit@2.0.5 @aiot-toolkit/jsc@1.0.7
+          ln -s "$(npm root -g)" node_modules
           python3 -m pip install --break-system-packages --require-hashes -r scripts/dictionary-requirements.txt
       - name: Generate offline assets
         run: |
           python3 scripts/build_dictionary.py --output src/common/dict --count 14000 --max-words 18000
           python3 scripts/icon.py
+          node scripts/check_dictionary.mjs
       - name: Build signed installable RPK
         env:
           VELA_PRIVATE_KEY: ${{ secrets.VELA_PRIVATE_KEY }}
