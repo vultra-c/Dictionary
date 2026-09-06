@@ -28,7 +28,7 @@ jobs:
           python3 -m pip install --break-system-packages --require-hashes -r scripts/dictionary-requirements.txt
       - name: Generate offline assets
         run: |
-          python3 scripts/build_dictionary.py --output src/common/dict --count 14000 --max-words 18000
+          python3 scripts/build_dictionary.py --output src/common/dict --count 50000 --max-words 55000
           python3 scripts/icon.py
           node scripts/check_dictionary.mjs
       - name: Build signed installable RPK

@@ -133,7 +133,7 @@ def build(output, count, max_words, max_bytes):
             if code == "0" and other in rows and other not in selected:
                 selected.add(other)
                 pending.append(other)
-    if not 12000 <= len(selected) <= max_words:
+    if not 50000 <= len(selected) <= max_words:
         raise ValueError("Selected word count outside budget: " + str(len(selected)))
     words = sorted(selected)
     ids = {word: i for i, word in enumerate(words)}
@@ -240,9 +240,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=Path("src/common/dict"))
     parser.add_argument("--check-rpk", type=Path, help="Only check the CI-built RPK size; do not generate data")
-    parser.add_argument("--count", type=int, default=14000)
-    parser.add_argument("--max-words", type=int, default=18000)
-    parser.add_argument("--max-bytes", type=int, default=16000000,
+    parser.add_argument("--count", type=int, default=50000)
+    parser.add_argument("--max-words", type=int, default=55000)
+    parser.add_argument("--max-bytes", type=int, default=40000000,
                         help="Uncompressed JSON budget; CI must separately enforce the 7,000,000-byte RPK limit")
     args = parser.parse_args()
     if os.environ.get("CI", "").lower() not in {"1", "true"}:
@@ -253,8 +253,8 @@ def main():
             parser.error("RPK must be a nonempty file no larger than 7,000,000 bytes: " + str(size))
         print(json.dumps({"rpk": str(args.check_rpk), "bytes": size, "max_bytes": 7000000}))
         return
-    if not 12000 <= args.count <= args.max_words <= 18000:
-        parser.error("Require 12000 <= count <= max-words <= 18000")
+    if not 50000 <= args.count <= args.max_words <= 55000:
+        parser.error("Require 50000 <= count <= max-words <= 55000")
     build(args.output, args.count, args.max_words, args.max_bytes)
 
 

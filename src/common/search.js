@@ -22,7 +22,7 @@ export function createDictionary(readText) {
     const value = JSON.parse(text);
     if (name === 'meta') {
       if (!value || value.version !== 1 || !Number.isInteger(value.pageSize) || value.pageSize < 1 ||
-          !Number.isInteger(value.count) || value.count < 0 || value.count > 18000 || !value.labels) {
+          !Number.isInteger(value.count) || value.count < 0 || value.count > 55000 || !value.labels) {
         throw new Error('Invalid dictionary metadata');
       }
     } else if (!Array.isArray(value)) throw new Error('Invalid dictionary shard: ' + name);
