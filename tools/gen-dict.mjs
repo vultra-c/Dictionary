@@ -1,25 +1,27 @@
 /**
- * 词典数据生成器：ECDICT ecdict.csv → src/common/data/dict.js
+ * 词典数据生成器：ECDICT ecdict.csv → src/common/data/{dict.dat,dict.smp,zh.dat}
  *
  * 数据源（不入库，65MB 太大）：
  *   tools/ecdict.csv  ←  https://github.com/skywind3000/ECDICT/raw/master/ecdict.csv
  *
  * 运行：node tools/gen-dict.mjs [ecdict.csv 路径]
  *
- * 产物格式：每行一条词条，字段以 \x01 \x02 \x03 分隔：
- *   word \x01 音标 \x02 中文释义(≤56字，≤2个义项) \x03 变形标记
+ * 产物三件套（v2 文件引擎，v1 的单字符串 dict.js 已废弃，手环 JS 堆放不下）：
+ *   dict.dat：行 word \x01 音标 \x02 中文释义(≤56字，≤2义项) \x03 变形标记 + '\n'，字典序 UTF-8；
+ *   dict.smp：二分抽样索引（详见 tools/lib/dict-pack.mjs）；
+ *   zh.dat   ：行 word \x02 释义，中文反查顺序扫描语料。
  * 变形标记两套编码：
  *   - 词根条目：k:v 逗号串，k∈{p 过去式,d 过去分词,i 现在分词,3 三单,s 复数,r 比较级,t 最高级}
  *   - 变形词条目：=词根:角色（如 went → =go:p，反向查询走这里）
  */
 import fs from 'node:fs'
+import { emitDictFiles } from './lib/dict-pack.mjs'
 
 const SRC = process.argv[2] || new URL('./ecdict.csv', import.meta.url).pathname
-const OUT = new URL('../src/common/data/dict.js', import.meta.url).pathname
+const OUT_DIR = new URL('../src/common/data/', import.meta.url).pathname
 // 「每一字节都要付利息」：CAP 决定词条规模上限，实测（见 README）~3.5 万主词条 + ~2.6 万反查词条
 // 成品 rpk 约 3.4MB（含输入法与图片），距 7MB 红线富余量用于将来加常见短语。
 const CAP = 35000
-const S1 = '\x01', S2 = '\x02', S3 = '\x03'
 
 // ---------- CSV 全量解析（65MB 字符串一次性解析；引号内 "" 为转义） ----------
 function parseCsv(text) {
@@ -164,21 +166,16 @@ for (const e of extra) uniq.push(e)
 console.log('变形反查补录:', extra.length)
 
 uniq.sort((a, b) => (a.w < b.w ? -1 : a.w > b.w ? 1 : 0))
-const lines = []
+const entries = []
 for (const e of uniq) {
   let exStr = ''
   if (e.ex.lemma) exStr = '=' + e.ex.lemma + ':' + (e.ex.role || '')
   else if (e.ex.forms.length) exStr = e.ex.forms.slice(0, 6).join(',')
-  lines.push(e.w + S1 + e.ph + S2 + e.tr + S3 + exStr)
+  entries.push({ w: e.w, ph: e.ph, tr: e.tr, exStr })
 }
-const payload = lines.join('\n')
-const code =
-  '// 词典数据 · 自动生成（node tools/gen-dict.mjs），请勿手改\n' +
-  '// 数据源：ECDICT（Collins/Oxford/词频择优 ' + uniq.length + ' 词）\n' +
-  'export const DICT_DATA = ' + JSON.stringify(payload) + '\n' +
-  'export const DICT_COUNT = ' + uniq.length + '\n'
-fs.writeFileSync(OUT, code)
+const stats = emitDictFiles(entries, OUT_DIR)
 const formsCnt = uniq.filter(e => !e.ex.lemma && e.ex.forms.length).length
 const lemmaCnt = uniq.filter(e => e.ex.lemma).length
 console.log('含变形词条:', formsCnt, '反向词条:', lemmaCnt)
-console.log('产出:', OUT, (code.length / 1048576).toFixed(2) + 'MB')
+console.log('产出:', OUT_DIR, 'dict.dat ' + stats.dictMB + 'MB + zh.dat ' + stats.zhMB + 'MB + dict.smp ' + stats.smpKB + 'KB',
+  '（样本', stats.sampleCount, '，词条', stats.entryCount, '，中文语料', stats.zhCount, '）')

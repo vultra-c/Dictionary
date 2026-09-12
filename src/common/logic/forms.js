@@ -104,45 +104,42 @@ function applyTransform(stem, tf) {
 
 /**
  * 派生词反查：query 命中失败或查派生词根时使用。
- * 返回 [{suffix, stem, via}] via 为规则痕迹（'辅双'/'e补'等），字典验证由调用方提供。
- * exists(word) → 词在词典本条目中返回 true
+ * 返回 [{suffix, stem}]，仅为规则候选——词典存在性验证由调用方
+ * 通过 dict.entriesFor 批量完成后过滤（规则引擎零词表，零误报由验证步骤保证）。
  */
-export function reverseStem(q, exists) {
+export function reverseStem(q) {
   const out = []
-  if (!q || q.length < 4) return out
+  if (!q || q.length < 4 || q.length > 64) return out
   for (const [sfx, tfs] of SUFFIXES) {
-    if (out.length >= 6) break
-    if (!q.endsWith(sfx) || q.length <= sfx.length + 1) continue
+    if (!endsWithStr(q, sfx) || q.length <= sfx.length + 1) continue
     const stem0 = q.slice(0, q.length - sfx.length)
     const tried = {}
     for (const tf of tfs) {
       const cand = applyTransform(stem0, tf)
-      // 无变换时也防重（stem 本身）
-      const cands = []
-      if (cand) cands.push(cand)
-      if (tf === '' && stem0) cands.push(stem0)
-      for (const c of cands) {
-        if (!c || tried[c]) continue
-        tried[c] = true
-        if (exists(c)) { out.push({ suffix: sfx, stem: c }); break }
-      }
-      if (out.length && out[out.length - 1].suffix === sfx) break
+      if (!cand || tried[cand]) continue
+      tried[cand] = true
+      out.push({ suffix: sfx, stem: cand })
     }
   }
   return out
 }
 
+// String.prototype.endsWith 兼容挂载（不用 String.prototype.endsWith，对齐 dict.js 老 JSC 防御）
+function endsWithStr(s, p) {
+  return s.length >= p.length && s.slice(s.length - p.length) === p
+}
+
 /**
- * 派生词正查：对词 word 规则生成候选，exists 过滤。
+ * 派生词正查：对词 word 规则生成候选（不过滤）。
  * 后缀集与 SUFFIXES 一致；base 变换集 = {word, dropE, y→i, 双写辅音}。
- * 返回 [{word: cand, suffix}]
+ * 返回 [{word: cand, suffix}]；词典验证由调用方 entriesFor 批量完成后过滤。
  */
-export function forwardDerive(word, exists) {
+export function forwardDerive(word) {
   const out = []
-  if (!word || word.length < 2) return out
+  if (!word || word.length < 2 || word.length > 48) return out
   const bases = [word]
-  if (word.endsWith('e') && word.length > 2) bases.push(word.slice(0, -1))
-  if (word.endsWith('y') && word.length > 2) bases.push(word.slice(0, -1) + 'i')
+  if (endsWithStr(word, 'e') && word.length > 2) bases.push(word.slice(0, -1))
+  if (endsWithStr(word, 'y') && word.length > 2) bases.push(word.slice(0, -1) + 'i')
   const last = word[word.length - 1]
   if ('bcdfgklmnprstz'.indexOf(last) >= 0 && word.length >= 3
     && 'aeiou'.indexOf(word[word.length - 2]) >= 0
@@ -155,9 +152,9 @@ export function forwardDerive(word, exists) {
     for (const b of bases) {
       const cand = b + sfx
       if (seen[cand]) continue
-      if (exists(cand)) { seen[cand] = true; out.push({ word: cand, suffix: sfx }) }
+      seen[cand] = true
+      out.push({ word: cand, suffix: sfx })
     }
-    if (out.length >= 12) break
   }
   return out
 }

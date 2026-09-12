@@ -78,6 +78,29 @@ if (!manifestBuf) {
   )
 }
 
+// ---- 2.5 词典数据资产闸门（v2 文件引擎：缺资产 = 词典空转，必须拦住）----
+function entryInfo(nameSuffix) {
+  let p = cdOffset
+  for (let i = 0; i < entries; i++) {
+    if (buf.readUInt32LE(p) !== 0x02014b50) break
+    const csize = buf.readUInt32LE(p + 20)
+    const fnLen = buf.readUInt16LE(p + 28)
+    const exLen = buf.readUInt16LE(p + 30)
+    const cmLen = buf.readUInt16LE(p + 32)
+    const name = buf.subarray(p + 46, p + 46 + fnLen).toString('utf8')
+    if (name.endsWith(nameSuffix)) return { name, csize }
+    p += 46 + fnLen + exLen + cmLen
+  }
+  return null
+}
+const datInfo = entryInfo('common/data/dict.dat')
+const smpInfo = entryInfo('common/data/dict.smp')
+const zhInfo = entryInfo('common/data/zh.dat')
+if (!datInfo) fail('包内缺少 common/data/dict.dat：文件引擎无词库，页面将全部空转')
+if (!smpInfo) fail('包内缺少 common/data/dict.smp：抽样索引缺失，引擎无法初始化')
+if (!zhInfo) fail('包内缺少 common/data/zh.dat：中文反查语料缺失')
+if (datInfo.csize < 1048576) fail(`dict.dat 体积异常（${datInfo.csize} 字节 < 1MB），怀疑词库残缺`)
+
 let manifest
 try {
   manifest = JSON.parse(manifestBuf.toString('utf8'))
@@ -98,5 +121,6 @@ if (buf.indexOf(SIG_MAGIC) === -1) {
 console.log('[verify-rpk] 包名:', manifest.package)
 console.log('[verify-rpk] 应用名:', manifest.name)
 console.log('[verify-rpk] 版本:', manifest.versionName, `(versionCode ${manifest.versionCode})`)
+console.log('[verify-rpk] 数据资产: dict.dat', (datInfo.csize / 1048576).toFixed(2) + 'MB', '+ dict.smp', (smpInfo.csize / 1024).toFixed(1) + 'KB', '+ zh.dat', (zhInfo.csize / 1048576).toFixed(2) + 'MB')
 console.log('[verify-rpk] 签名块: 已找到 RPK Sig Block 42')
 console.log('[verify-rpk] OK: 该 RPK 可直接用于设备安装')

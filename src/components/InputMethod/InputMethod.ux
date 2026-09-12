@@ -463,21 +463,30 @@ export default {
   /**
    * 英文词典联想：输入前缀 → [输入本身, 词典前缀补全候选…]。
    * 与中文整词上屏路径完全一致（resultWordList → resultRow0 → onRsSelect 整词消费），
-   * 如输入 ap → [ap, apple, apply, apart, approach…]（词典二分扩散，见 common/logic/dict.js）。
+   * 如输入 ap → [ap, apple, apply, apart, approach…]（文件引擎桶窗扩散，见 common/logic/dict.js）。
+   * 引擎异步：先同步上屏输入本身（候选行即时可点），命中返回后再丰富候选（~10-50ms）。
    */
   applyEnglishCandidates(input) {
-    const out = [input];
-    const hits = suggestEn(input, 12);
-    if (hits) {
-      for (let i = 0; i < hits.length && out.length < 13; i++) {
-        out.push(hits[i]);
-      }
-    }
     this.resultList = [];
     this.matchedLen = 0;
     this.sylTopChars = [];
-    this.resultWordList = out;
+    this.resultWordList = [input];
     this.setResultListAll();
+    const me = this;
+    const snap = String(input).toLowerCase();
+    suggestEn(input, 12, function (hits) {
+      // 过期守卫：输入已变化则丢弃本次异步结果（对齐 cn 候选不串键程）
+      var waiting = (me.lastWaitingStr && me.lastWaitingStr[me.waitingIndex]) ? me.lastWaitingStr[me.waitingIndex] : "";
+      if ((me.cval + waiting).toLowerCase() !== snap) return;
+      var out = [input];
+      if (hits) {
+        for (var i = 0; i < hits.length && out.length < 13; i++) {
+          out.push(hits[i]);
+        }
+      }
+      me.resultWordList = out;
+      me.setResultListAll();
+    });
   },
   setResultListAll() {
     // 首页展示序列：整词在前，单字随后，截断到 maxlength

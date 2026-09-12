@@ -52,7 +52,7 @@
 <script>
 import router from '@system.router'
 import prompt from '@system.prompt'
-import { findExact, entryAt } from '../../common/logic/dict.js'
+import { findExact, entriesFor } from '../../common/logic/dict.js'
 import { parseExchange, roleLabel, forwardDerive, reverseStem } from '../../common/logic/forms.js'
 import { loadFavs, isFav, toggleFav } from '../../common/logic/fav.js'
 
@@ -81,17 +81,30 @@ export default {
     const w = String(this.$app.$def.dictWord || '')
     if (!w) { goBackSafe(); return }
     this.word = w
-    const exists = (s) => findExact(s) >= 0
-    const idx = findExact(w)
-    const rec = idx >= 0 ? entryAt(idx) : null
-    const ex = rec ? parseExchange(rec.ex) : { lemma: '', role: '', forms: [] }
-    // 词根词条（反查词条的被指向体）
-    let rootRec = null
-    if (ex.lemma) {
-      const ri = findExact(ex.lemma)
-      rootRec = ri >= 0 ? entryAt(ri) : null
-    }
+    const me = this
+    // 文件引擎异步瀑布：本体 → 词根（若有）→ 候选批量验证 → 组装
+    findExact(w, (rec) => {
+      const ex = rec ? parseExchange(rec.ex) : { lemma: '', role: '', forms: [] }
+      const withRoot = (rootRec) => {
+        // 规则层只出候选，词典验证用 entriesFor 一次批量完成
+        const stems = ex.lemma ? [] : reverseStem(w)
+        const deriveBase = ex.lemma || w
+        const derivs = forwardDerive(deriveBase)
+        const cand = []
+        const seenC = {}
+        const pushCand = (wd) => { if (wd && !seenC[wd]) { seenC[wd] = true; cand.push(wd) } }
+        for (let i = 0; i < stems.length; i++) pushCand(stems[i].stem)
+        for (let j = 0; j < derivs.length; j++) pushCand(derivs[j].word)
+        entriesFor(cand, (emap) => {
+          me.assemble(rec, ex, rootRec, stems, derivs, emap)
+        })
+      }
+      if (ex.lemma) findExact(ex.lemma, (rootRec) => withRoot(rootRec))
+      else withRoot(null)
+    })
+  },
 
+  assemble(rec, ex, rootRec, stems, derivs, emap) {
     // —— 头部 ——
     if (ex.lemma) {
       this.headSub = ex.lemma + ' 的' + (roleLabel(ex.role) || '变形')
@@ -141,29 +154,42 @@ export default {
         sense: rootRec ? rootRec.trans : ''
       })
     } else {
-      // 派生还原（规则猜测 + 词典验证：creation → create）
-      const stems = reverseStem(w, exists)
-      if (stems.length) {
+      // 派生还原（规则候选 + entriesFor 验证：creation → create）；
+      // 每个后缀取首个通过验证的词根（语义对齐旧版逐变换验证），最多 6 条
+      const okSfx = {}
+      const vS = []
+      for (let i = 0; i < stems.length; i++) {
+        const st = stems[i]
+        if (okSfx[st.suffix]) continue
+        const se = emap[st.stem]
+        if (!se) continue
+        okSfx[st.suffix] = true
+        vS.push({ stem: st.stem, suffix: st.suffix, entry: se })
+        if (vS.length >= 6) break
+      }
+      if (vS.length) {
         push('sec', { text: '词根还原' })
-        for (let i = 0; i < stems.length; i++) {
-          const st = stems[i]
-          const si = findExact(st.stem)
+        for (let i = 0; i < vS.length; i++) {
           push('link', {
-            label: '词根 -' + st.suffix,
-            word: st.stem,
-            sense: si >= 0 ? entryAt(si).trans : ''
+            label: '词根 -' + vS[i].suffix,
+            word: vS[i].stem,
+            sense: vS[i].entry ? vS[i].entry.trans : ''
           })
         }
       }
     }
 
-    // 派生词（规则生成 + 词典验证：create → creation/creative/creator）
-    const deriveBase = ex.lemma || w
-    const derivs = forwardDerive(deriveBase, exists)
-    if (derivs.length) {
+    // 派生词（规则候选 + entriesFor 验证，取前 12 条：create → creation/creative/creator）
+    const vD = []
+    for (let k = 0; k < derivs.length; k++) {
+      if (!emap[derivs[k].word]) continue
+      vD.push(derivs[k])
+      if (vD.length >= 12) break
+    }
+    if (vD.length) {
       push('sec', { text: '派生词' })
-      for (let i = 0; i < derivs.length; i++) {
-        push('chip', { label: '', word: derivs[i].word, suffix: '-' + derivs[i].suffix })
+      for (let i = 0; i < vD.length; i++) {
+        push('chip', { label: '', word: vD[i].word, suffix: '-' + vD[i].suffix })
       }
     }
 
@@ -183,12 +209,15 @@ export default {
 
   open(item) {
     if (!item || !item.word) return
-    if (findExact(item.word) < 0) {
-      prompt.showToast({ message: '未收录 ' + item.word, duration: 1200 })
-      return
-    }
-    this.$app.$def.dictWord = item.word
-    router.push({ uri: 'pages/detail' })
+    const me = this
+    findExact(item.word, (e) => {
+      if (!e) {
+        prompt.showToast({ message: '未收录 ' + item.word, duration: 1200 })
+        return
+      }
+      me.$app.$def.dictWord = item.word
+      router.push({ uri: 'pages/detail' })
+    })
   },
 
   goBack() { router.back() },

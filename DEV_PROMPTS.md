@@ -10,7 +10,8 @@
 ## 0. 一句话定位
 
 小米手环 9 Pro（336×480，Vela 快应用）上的**纯离线英汉双向词典**：
-6.3 万词条内置单字符串数据文件 + 二分/扫描引擎 + 规则派生，rpk 全包 ≤ 7MB（实测约 3.4MB）。
+6.3 万词条打包为包内资产文件（dict.dat/dict.smp/zh.dat）+ 小窗随机读取引擎 + 规则派生，
+rpk 全包 ≤ 7MB（实测约 4.6MB）。
 
 ## 1. 硬性约束（违反必翻车，真机验证过的坑）
 
@@ -23,50 +24,75 @@
    页面逻辑尽量「事件驱动同步执行」，少用定时器串联。
 6. **图片**：静态资源 `<img static>`；页面间引用用绝对路径 `/common/...`。
 7. **纯逻辑库禁止 import @system.\***：`common/logic/dict.js`、`forms.js` 必须保持 Node 可测
-   （`node tests/smoke.mjs` 直接 import 它们）；storage/brightness 只在页面层或 settings.js/fav.js 封装层出现。
+   （`node tests/smoke.mjs` 直接 import 它们）；storage/brightness/file 只在页面层或
+   settings.js/fav.js/dictfile.js 封装层出现（dict 引擎靠 `warmup(makeReader())` 注入 readRange）。
 8. **版本号**：`src/manifest.json` 的 `versionName` 按 `V26.9.XX.DICT` 递增，`versionCode` 同步递增；
    关于页版本文案手动同步。
 9. **每次修改完都要 git 推送**：本仓库以 GitHub Action 为唯一构建出口（见 §6）。
 
-## 2. 词典数据设计（为什么是单字符串）
+## 2. 词典数据设计（v2：为什么是文件而不是 JS 模块）
 
-`src/common/data/dict.js` 由 `tools/gen-dict.mjs` 生成，**勿手改**。
+`src/common/data/` 三件套由 `tools/lib/dict-pack.mjs` 生成（gen-dict.mjs / migrate-from-js.mjs 驱动），**勿手改**。
+
+**v1 的教训（必记）**：单字符串 `data/dict.js`（5.9MB / 339 万字符）在真机 JS 堆下限加载即 OOM，
+凡 import 它的页面（查词/生词本/详情）打开就崩（应用进程死，系统无恙）。v2 起改为：
 
 ```
-DICT_DATA = "apple\x01æpl\x02n. 苹果\x03s:apples\ngood\x01gud\x02...\x03p:went,...\nwent\x01\x02\x03=go:p\n..."
+dict.dat = "apple\x01æpl\x02n. 苹果\x03s:apples\ngood\x01gud\x02...\x03p:went,...\nwent\x01\x02\x03=go:p\n..."   (~4.7MB)
+dict.smp = 32B 头('DSMP'|ver|样本数|词条数|dictLen|zhLen|保留) + 每样本 8B [word前6字母 packed u32 | 行首偏移 u32]   (~27KB)
+zh.dat   = "apple\x02n. 苹果\n..."（只含释义非空词条，中文反查扫描语料）   (~3.4MB)
 ```
 
 - 每行一条词条，行 `\n` 分隔，字段 `\x01 \x02 \x03` 分隔，全表按 word 字典序排序。
-- **运行时零解析建库**：引擎首次使用时一遍扫描建 OFF（Uint32Array 行偏移表，~250KB），
-  常驻内存只有原字符串 + OFF，没有任何词条对象数组——这是手表堆内存下 6.3 万词条可行根。
-- 变形标记两套编码：
+- **运行时零常驻**：`smp` 抽样索引整表驻留（~27KB），英文查询 = smp 在 RAM 二分定位「桶」
+  → `readArrayBuffer(position, length)` 读 ≤2KB 桶窗 → 行扫。桶跨度生成期保证 ≤ ~1.7KB。
+  常驻内存 ~100KB（smp + 6 桶 LRU 缓存 + 中文扫描单窗缓冲）。
+- 身份门槛：`readRange` 由页面层经 `dictfile.makeReader()` 注入（file API 串行队列），
+  引擎本体不 import @system.*，Node 直测（smoke 用 fs 切片同构复现窗口逻辑）。
+- 变形标记两套编码（同 v1）：
   - 词根条目 `k:v` 逗号串：`p:went,d:gone,i:going,3:goes`（k∈p/d/i/3/s/r/t）；
   - 反查词条 `=词根:角色`：`went → =go:p`（反向查询的数据票根）。
 - 纯反查词条（释义为「xx的过去式」式样板文）**释义置空**，运行时用变形标记结构化重建文案，省 ~600KB。
 
 **改词库的唯一入口**：改 `tools/gen-dict.mjs` 的筛选/清洗规则 → 把 `ecdict.csv`（65MB，不入库）
-下载到 `tools/ecdict.csv` → `npm run gen:dict` → 跑冒烟 → 提交生成物。
+下载到 `tools/ecdict.csv` → `npm run gen:dict` → 跑冒烟 → 提交生成物（dat+smp+zh 三件一起提交）。
 
-## 3. 引擎（common/logic/dict.js）
+## 3. 引擎（common/logic/dict.js，全异步回调风格对齐 @system.*）
 
-| 能力 | 实现 | 复杂度 |
+| 能力 | 实现 | I/O 复杂度 |
 |------|------|--------|
-| 英文精确查询 | OFF 上二分（cmpWord 逐 char 比较，零分配） | O(log N) |
-| 前缀扩散搜索 | 二分定位首行 + `startsWithPrefix` 连续段收集 | O(log N + k) |
-| 键盘英文联想 | `suggestEn(q, 12)` 供 InputMethod 候选行 | 同上 |
-| 中文反查 | `D.indexOf(q)` 原语扫描 + 行首回卷 + 分隔符计数校验（命中须落在释义段） | O(len) 原语速度 |
-| 统一调度 | `search(raw)` 含 CJK 判定 / 输入净化 / kind 分类 | — |
+| 英文精确查询 `findExact(w, cb)` | smp RAM 二分定位桶 + ≤2KB 桶窗行扫 | 1 次读（命中缓存 0 次） |
+| 前缀扩散 `prefixQuery(q, cap, cb)` | 定位桶逐行收集前缀连续段，跨桶续扫（≤8 桶） | 1~3 次读 |
+| 键盘英文联想 `suggestEn(q, cap, cb)` | 同上，取词不取条 | 同上 |
+| 批量取词 `entriesFor(words, cb)` | 顺序链 + 桶LRU缓存（同前缀候选基本零 I/O） | ≤N 次读 |
+| 中文反查 `zhQuery(q, cap, cb)` | zh.dat 顺序 64KB 窗口扫描（owned 区间判属 + word 去重 + seq 舵标废弃） | ≤~54 次读（全扫）/提前收满即止 |
+| 统一调度 `search(raw, cap, cb)` | CJK 判定 / 输入净化 / kind 分类 | — |
 
-修引擎必须同步补 `tests/smoke.mjs` 断言（当前 46 条，CI 必过）。
-历史教训：`prefixQuery` 收集条件曾误用 `cmpWord >= 0`（把字典序在后的词全收进来），
-必须用 `startsWithPrefix` 判「行词以前缀开头」。
+接口约定（页面先接线再查询，未 warm 会自动挂起 smp 装载后再回调）：
 
-## 4. 词形与派生（common/logic/forms.js）
+```js
+dict.warmup(makeReader())  // app.ux onCreate 一次性：注入 readRange + 预热 smp（幂等）
+dict.search(q, 60, (rst) => { /* {kind, exact, rows:[{word,ph,trans,ex}]} */ })
+dict.findExact(w, (entry|null) => ...)
+dict.entriesFor([w...], (map{w:entry|null}) => ...)
+dict.suggestEn(q, 12, ([w...]) => ...)
+```
+
+- **过期舵标**：页面持有自增 seq，回调时 seq 不等即丢弃（搜索页/输入法同模式）；
+  引擎内部 `querySeq` 让中文长扫描在新查询到来时空中止。
+- **损坏兜底**：资产缺失/I-O 失败 → broken 态，所有查询回空结果，页面显示空态，不崩。
+- UTF-8 自行解码（dict.js decodeU8），不依赖 TextDecoder（可用性无文档保障）；
+  分隔符 `\x01/\x02/\x03/\n` 为单字节 ASCII，窗口切割至多破坏边缘字符解码，不破行解析。
+
+修引擎必须同步补 `tests/smoke.mjs` 断言（当前 51 条，CI 必过）。
+
+## 4. 词形与派生（common/logic/forms.js，纯候选生成）
 
 - `parseExchange(ex)`：解析两套变形编码 → `{lemma, role, forms:[{k,label,v}]}`。
-- `forwardDerive(word, exists)`：派生正查。35 种后缀 × 词干变换集（drop e / y→i / 辅音双写）
-  生成候选，`exists`（即 `findExact >= 0`）逐一验证后才出现——**规则引擎零词表、零误报**。
-- `reverseStem(q, exists)`：派生反查。后缀剥离 + 词干恢复（补 e / undouble / i→y）候选验证。
+- `forwardDerive(word)`：派生正查候选（不过滤）。35 种后缀 × 词干变换集（drop e / y→i / 辅音双写）。
+- `reverseStem(q)`：派生反查候选（不过滤）。后缀剥离 + 词干恢复（补 e / undouble / i→y）。
+- **验证在调用方**：调 `entriesFor` 批量查词典后过滤（**规则引擎零词表、零误报由验证步骤保证**）；
+  detail 页每个后缀取首个验证通过的词根（cap 6），派生 chip 取前 12 条验证通过的候选。
 - 后缀表 `SUFFIXES` 有序（ion 最先——create→creation 是最高频派生型）。
   加后缀时同时补正查变换集与反查恢复集，并加冒烟断言。
 
@@ -74,11 +100,13 @@ DICT_DATA = "apple\x01æpl\x02n. 苹果\x03s:apples\ngood\x01gud\x02...\x03p:wen
 
 - 路由六页：index / search / detail / favorites / settings / about，见 `src/manifest.json`。
 - 跨页传参只走 `this.$app.$def.dictWord`（app.ux 预声明）。
-- 右滑 = 收键盘（若开）→ `router.back()`；`onBackPress` 返回 true 自管返回栈。
-- 搜索页每次按键同步查询（引擎毫秒级，无需防抖定时器）；结果分块渲染（首屏 18 行，`onscrollbottom` 追加）。
-- 词条详情行数据在页面 `build()` 里组装成 `{type, cls, text/label/word/suffix/sense}` 平铺数组，
+- 右滑 = 收键盘（若开）→ `router.back()`；`onBackPress` 返回 true。
+- 引擎异步回调（~10-50ms 量级，无防抖定时器）：每个查询发端持有自增 seq 舵标，回调过期即弃；
+  结果分块渲染（首屏 18 行，`onscrollbottom` 追加）。
+- 词条详情行数据在 `assemble()` 里组装成 `{type, cls, text/label/word/suffix/sense}` 平铺数组，
   模板单一 list-item + `show` 分发；跳转词条 = 改 `$def.dictWord` + push 同页（栈式钻取，返回即回上级词）。
-- 收藏上限 200，`toggleFav` 返回 added/removed/null，UI 立即回显。
+- 收藏上限 200，`toggleFav` 返回 added/removed/null，UI 立即回显；
+  生词本行经 `entriesFor` 一次批量反查组装。
 
 ## 6. 构建与发布（本仓库不在本地构建 rpk）
 

@@ -40,7 +40,7 @@
 import router from '@system.router'
 import prompt from '@system.prompt'
 import { loadFavs, clearFavs } from '../../common/logic/fav.js'
-import { findExact, entryAt } from '../../common/logic/dict.js'
+import { entriesFor } from '../../common/logic/dict.js'
 
 export default {
   private: {
@@ -53,14 +53,20 @@ export default {
   refresh() {
     const me = this
     loadFavs((words) => {
+      me.toRows(words, (rows) => { me.favs = rows })
+    })
+  },
+
+  // 批量反查词条组装列表行（文件引擎 entriesFor 一次批量完成）
+  toRows(words, cb) {
+    entriesFor(words, (emap) => {
       const rows = []
       for (let i = 0; i < words.length; i++) {
         const w = words[i]
         let sense = ''
-        const idx = findExact(w)
-        if (idx >= 0) {
-          const e = entryAt(idx)
-          sense = e.trans.split('；')[0]
+        const e = emap[String(w || '').toLowerCase()] || null
+        if (e) {
+          sense = e.trans ? e.trans.split('；')[0] : ''
           if (!sense && e.ex && e.ex[0] === '=') {
             const cut = e.ex.indexOf(':')
             sense = (cut > 0 ? e.ex.slice(1, cut) : e.ex.slice(1)) + ' 的变形'
@@ -68,7 +74,7 @@ export default {
         }
         rows.push({ id: 'f' + i + '_' + w, word: w, sense })
       }
-      me.favs = rows
+      cb(rows)
     })
   },
 

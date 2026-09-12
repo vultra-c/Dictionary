@@ -2,14 +2,19 @@
 // Vela 全局数据容器：app.ux 导出对象上的属性会成为 $app.$def.*，
 // 页面通过 this.$app.$def.dictWord 等跨页读写（不要在 app 里用 this.$data）。
 import { loadSettings, applyKeepScreenOn } from './common/logic/settings.js'
+import { makeReader } from './common/logic/dictfile.js'
+import { warmup } from './common/logic/dict.js'
 
 export default {
   // 搜索页/生词本 → 详情页：待查单词（纯小写英文）
   dictWord: '',
 
-  // 常亮显示的「记忆」：setKeepScreenOn 退出应用即由系统复位，
-  // 因此每次启动都按持久化设置重新打开一次。
+  // 词典引擎启动预热：注入文件读取器并后台装载抽样索引（dict.smp，~27KB）。
+  // 资产缺失/读取失败时引擎退化 broken 态，页面走空结果兜底而非崩溃。
   onCreate() {
+    try { warmup(makeReader()) } catch (e) { /* 隔离启动期任何异常 */ }
+    // 常亮显示的「记忆」：setKeepScreenOn 退出应用即由系统复位，
+    // 因此每次启动都按持久化设置重新打开一次。
     loadSettings((s) => {
       if (s.keepScreenOn) applyKeepScreenOn(true)
     })

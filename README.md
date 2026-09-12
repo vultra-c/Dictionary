@@ -4,11 +4,11 @@
 6.3 万词条全部内置在包内，无需联网。
 
 - 包名：`com.whyy.dictionary`
-- 当前版本：`V26.9.1.DICT`（versionCode 2609001）
+- 当前版本：`V26.9.2.DICT`（versionCode 2609002）
 - 设计尺寸：336 × 480（designWidth 336）
 - UI 风格规范：仓库根目录 `VELA_UI_SKILL.md`（后续 AI 开发必读，与化学工具箱同源的「闪念小抄」风格）
 - 开发提示词文档：仓库根目录 `DEV_PROMPTS.md`（AI 辅助开发直接参考）
-- 风格参考仓库：[examreader](https://github.com/vultra-c/examreader)、[Chemical-calculator](https://github.com/vultra-c/Chemical-calculator)
+- 风格参考仓库：[examreader](https://github.com/vultra-c/examreader)、[Chemical-calculator](https://github.com/vultra-c/Chemical-calculator)、[Snapnotes](https://github.com/vultra-c/Snapnotes)
 
 ## 功能
 
@@ -42,24 +42,30 @@
 ```
 ├── package.json                # aiot-toolkit 构建配置
 ├── src/manifest.json           # 包名/版本/路由/designWidth=336
-├── src/app.ux                  # $def 跨页传参（dictWord）+ 常亮启动应用
+├── src/app.ux                  # $def 跨页传参（dictWord）+ 常亮启动应用 + 词典引擎预热
 ├── src/common/
 │   ├── style.css               # 闪念小抄风格公共令牌与组件样式（hd 顶栏四件套）
 │   ├── images/                 # hd/back/more/enter/empty_state/icon.png
-│   ├── data/dict.js            # ★ 词典数据（自动生成，~4.3MB，63071 条单一长字符串）
+│   ├── data/
+│   │   ├── dict.dat            # ★ 词库全文（自动生成，~4.7MB，63071 条行式词条，字典序 UTF-8）
+│   │   ├── dict.smp            # ★ 抽样索引（~27KB，运行时整表驻留，二分定位「桶」）
+│   │   └── zh.dat              # ★ 中文反查语料（word+释义行，顺序窗口扫描用）
 │   └── logic/
-│       ├── dict.js             # ★ 词典引擎：二级分隔字段 + OFF 偏移数组 + 二分/扩散/中文反查
-│       ├── forms.js            # ★ 词形解析与派生规则引擎（正查/反查，词典验证零误报）
+│       ├── dict.js             # ★ 词典引擎：包内资产文件 + 注入式 readRange 小窗随机读取（异步回调）
+│       ├── dictfile.js         # @system.file 封装层：makeReader() 串行队列（页面/app 层接线）
+│       ├── forms.js            # ★ 词形解析与派生规则引擎（纯候选生成，验证走 entriesFor）
 │       ├── fav.js              # 生词本 storage 封装
 │       └── settings.js         # 设置持久化 + 常亮应用
 ├── src/components/InputMethod/ # 书中书：拼音连打中文 + 英文词典联想输入法（通用词库版）
 ├── src/pages/*/                # 六个页面（index/search/detail/favorites/settings/about）
 ├── scripts/
 │   ├── patch-aiotpack.js       # rspack 原生绑定 SIGBUS 补丁（postinstall 自动执行）
-│   └── verify-rpk.mjs          # 包名 + RPK Sig Block 42 签名块闸门校验
-├── tests/smoke.mjs             # 引擎冒烟测试（46 条断言，CI 必过）
+│   └── verify-rpk.mjs          # 包名 + 签名块 + 数据资产三件闸门校验
+├── tests/smoke.mjs             # 引擎冒烟测试（51 条断言，CI 必过）
 ├── tools/
-│   ├── gen-dict.mjs            # ECDICT → data/dict.js 生成器
+│   ├── gen-dict.mjs            # ECDICT → data/ 三件套生成器
+│   ├── lib/dict-pack.mjs       # 共享打包逻辑（dict.dat/dict.smp/zh.dat）
+│   ├── migrate-from-js.mjs     # 一次性迁移脚本（旧 dict.js → 三件套）
 │   └── gen-icon.mjs            # 零依赖 PNG 图标生成器（翻页书主题）
 ├── sign/release/               # 发布签名 private.pem + certificate.pem
 ├── .github/workflows/build.yml # 推送即构建 + 冒烟 + 校验 + 体积闸门 + Release
@@ -70,13 +76,16 @@
 
 - 数据源：ECDICT 简明英汉词典增强版（[skywind3000/ECDICT](https://github.com/skywind3000/ECDICT)，含音标/释义/词频/柯林斯星级/变形标注）。
 - 生成：将 `ecdict.csv`（65MB，不入库）下载到 `tools/ecdict.csv` 后执行
-  `npm run gen:dict`，产物为 `src/common/data/dict.js`。
+  `npm run gen:dict`，产物为 `src/common/data/` 三件套（dict.dat / dict.smp / zh.dat）。
 - 词条规模与筛选：纯小写词根 2–18 字符；柯林斯/牛津/考试标签/词频排名择优 3.5 万；
   另有 2.8 万装「变形反查词条」（如无可靠的词频信号但带 lemma 回指标注的 went/gone/better 等全形态）。
-- 数据格式（每行一条，运行时零解析建库）：
+- 数据格式（每行一条）：
   `word \x01 音标 \x02 释义(≤2义项56字) \x03 变形标记`，行 `\n` 分隔；
   变形标记：`k:v` 逗号串（常规变形）或 `=词根:角色`（反查标记）。
-- 体积：dict.js 载荷约 4.7MB，成品 rpk（zip 压缩）全包约 3.4MB，距 7MB 红线富余。
+- 为什么是文件而不再是 JS 模块（v2）：手环 JS 堆极小，5.9MB 单字符串模块加载即 OOM，
+  凡 import 它的页面打开就崩。改为包内资产 + `file.readArrayBuffer` 按 position/length
+  小窗随机读取（英文查询 1~2 次 ≤2KB 桶读；中文反查 64KB 顺序窗口），常驻内存 ~100KB。
+- 体积：三件套原始约 8.2MB，rpk（zip 压缩）全包约 4.6MB，距 7MB 红线富余。
 
 ## 构建与验证
 
@@ -84,14 +93,14 @@
 推送 main/master 分支即触发 GitHub Action，自动完成
 
 1. `npm install`（postinstall 打 aiotpack 补丁）
-2. `node tests/smoke.mjs`（46 条引擎断言）
+2. `node tests/smoke.mjs`（51 条引擎断言）
 3. `npm run release`（aiot release --enable-jsc → dist/*.rpk）
 4. `node scripts/verify-rpk.mjs dist/*.rpk`（包名 + 签名块闸门）
 5. 体积闸门（≤ 7MB，超出报错）
 6. 上传 Artifact + 发布原始 rpk 到 GitHub Release
 
 固定安装包下载地址：
-`https://github.com/vultra-c/Dictionary/releases/latest/download/com.whyy.dictionary.release.V26.9.1.DICT.rpk`
+`https://github.com/vultra-c/Dictionary/releases/latest/download/com.whyy.dictionary.release.V26.9.2.DICT.rpk`
 （版本号随行更新，以 Release 最新资产为准；Artifacts 是 zip 容器，直接装会显示「没有包名」。）
 
 本地准备环境（可选）：

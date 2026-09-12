@@ -59,7 +59,7 @@
 <script>
 import router from '@system.router'
 import prompt from '@system.prompt'
-import { search, entryAt } from '../../common/logic/dict.js'
+import { search } from '../../common/logic/dict.js'
 import { loadSettings } from '../../common/logic/settings.js'
 
 // 结果分块渲染参数：首屏 18 行，滚动/点按「加载更多」追加
@@ -76,7 +76,8 @@ export default {
     renderPos: 0,
     hasSearched: false,
     hasMore: false,
-    restCount: 0
+    restCount: 0,
+    srchSeq: 0
   },
 
   onInit() {
@@ -120,24 +121,29 @@ export default {
   runSearch() {
     const q = this.query.trim()
     if (!q) {
+      this.srchSeq++
       this.allRows = []
       this.applyRows([])
       this.hasSearched = false
       return
     }
     this.hasSearched = true
-    // 关键路径全部不大于毫秒级：无延时器防抖，直接同步查（实测表端无感）。
-    const rst = search(q, 60)
-    const rows = []
-    const seen = {}
-    for (var i = 0; i < rst.rows.length; i++) {
-      const e = entryAt(rst.rows[i])
-      if (seen[e.word]) continue
-      seen[e.word] = true
-      rows.push(this.toRow(i, e))
-      if (rows.length >= 60) break
-    }
-    this.applyRows(rows)
+    // 文件引擎异步查询（单键程 ~10-50ms 级）；srchSeq 舵标丢弃过期结果
+    const seq = ++this.srchSeq
+    const me = this
+    search(q, 60, (rst) => {
+      if (seq !== me.srchSeq) return
+      const rows = []
+      const seen = {}
+      for (var i = 0; i < rst.rows.length; i++) {
+        const e = rst.rows[i]
+        if (!e || !e.word || seen[e.word]) continue
+        seen[e.word] = true
+        rows.push(me.toRow(rows.length, e))
+        if (rows.length >= 60) break
+      }
+      me.applyRows(rows)
+    })
   },
 
   applyRows(rows) {
