@@ -2,17 +2,37 @@
 // Vela 全局数据容器：app.ux 导出对象上的属性会成为 $app.$def.*，
 // 页面通过 this.$app.$def.dictWord 等跨页读写（不要在 app 里用 this.$data）。
 import { loadSettings, applyKeepScreenOn } from './common/logic/settings.js'
-import { makeReader } from './common/logic/dictfile.js'
+import { makeReader, diagRead } from './common/logic/dictfile.js'
 import { warmup } from './common/logic/dict.js'
+import prompt from '@system.prompt'
 
 export default {
   // 搜索页/生词本 → 详情页：待查单词（纯小写英文）
   dictWord: '',
 
+  // DEBUG 诊断（V26.9.3 临时版，定位真机文件读取行为，下一版移除）：
+  // D1: dict.smp 头 32B（期望 ok u8 32 DSMP）
+  // D2: dict.dat 偏移 100000 读 64B（期望长度恰 64，验证 position/length 生效）
+  runDiag() {
+    const me = this
+    diagRead('/common/data/dict.smp', 0, 32, (r1) => {
+      prompt.showToast({
+        message: 'D1 smp: ' + r1,
+        duration: 2800,
+        complete: () => {
+          diagRead('/common/data/dict.dat', 100000, 64, (r2) => {
+            prompt.showToast({ message: 'D2 dat: ' + r2, duration: 4000 })
+          })
+        }
+      })
+    })
+  },
+
   // 词典引擎启动预热：注入文件读取器并后台装载抽样索引（dict.smp，~27KB）。
   // 资产缺失/读取失败时引擎退化 broken 态，页面走空结果兜底而非崩溃。
   onCreate() {
     try { warmup(makeReader()) } catch (e) { /* 隔离启动期任何异常 */ }
+    this.runDiag()
     // 常亮显示的「记忆」：setKeepScreenOn 退出应用即由系统复位，
     // 因此每次启动都按持久化设置重新打开一次。
     loadSettings((s) => {

@@ -280,6 +280,7 @@ export default {
   },
   onRsSelect(txt) {
     this.onVibrate();
+    this.$emit("diag", { msg: 'S:' + txt });  // DEBUG 诊断（下一版移除）
     // 检查是否为每音节首字 → 按偏移消费 cval 前缀
     var consumed = false;
     if (txt.length === 1 && this.sylTopChars.length > 0 && this.cval.length > 0) {

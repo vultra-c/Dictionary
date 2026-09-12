@@ -52,7 +52,7 @@
 
     <!-- 共享输入法（中/英；英文词候选联动词典） -->
     <input-method hide="{{!showKb}}" keyboardtype="QWERTY" screentype="rect" maxlength="10"
-      vibratemode="{{vibrateMode}}" @complete="onInput" @delete="onDel"></input-method>
+      vibratemode="{{vibrateMode}}" @complete="onInput" @delete="onDel" @diag="onDiag"></input-method>
   </div>
 </template>
 
@@ -94,6 +94,7 @@ export default {
     if (!e || !e.detail) return
     const ch = String(e.detail.content || '')
     if (!ch) return
+    prompt.showToast({ message: 'Q:' + this.query + '+' + ch, duration: 900 })  // DEBUG 诊断（下一版移除）
     if (this.query.length >= 30) return
     // 丢弃空格等杂字符（中文为 \u4e00-\u9fa5 直接可取）
     if (/^[ A-Za-z]+$/.test(ch)) {
@@ -190,6 +191,12 @@ export default {
     if (!item || !item.word) return
     this.$app.$def.dictWord = item.word
     router.push({ uri: 'pages/detail' })
+  },
+
+  onDiag(e) {  // DEBUG 诊断（下一版移除）
+    if (e && e.detail && e.detail.msg) {
+      prompt.showToast({ message: e.detail.msg, duration: 900 })
+    }
   },
 
   goBack() { router.back() },

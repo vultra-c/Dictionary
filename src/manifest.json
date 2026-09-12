@@ -1,8 +1,8 @@
 {
   "package": "com.whyy.dictionary",
   "name": "词典",
-  "versionName": "V26.9.2.DICT",
-  "versionCode": 2609002,
+  "versionName": "V26.9.3.DICT",
+  "versionCode": 2609003,
   "minPlatformVersion": 1200,
   "minAPILevel": 1,
   "icon": "/common/images/icon.png",
